@@ -70,7 +70,7 @@ InitStates = zeros(6,1);
 
 % Previous States are used for loop purpose -------------------------------
 InitStates(1) = 0;
-InitStates(2) = 2;
+InitStates(2) = 0;
 InitStates(3) = 0;
 InitStates(4) = 1;
 CurrentStates = InitStates;
@@ -91,7 +91,7 @@ Ts_PP = 0.5;
 Ts_MPC = 0.1;
 
 % Sampling Time for Plant -------------------------------------------------
-TsPlant = 0.05;
+TsPlant = 0.1;
 
 % Start Time of The Simulation --------------------------------------------
 SimTime = 0;
@@ -100,7 +100,7 @@ SimTime = 0;
 SimTimeLimit = 30;
 
 %% Configuration for Mixed-Integer Quadratic Programming
-InitialStates_PP = [InitStates(1) InitStates(2)]';
+InitialStates_PP = [InitStates(1) InitStates(4) InitStates(2) InitStates(5)]';
 
 % Set Parameters for constraints
 
@@ -108,12 +108,11 @@ InitialStates_PP = [InitStates(1) InitStates(2)]';
 Array_Of_Obstacles = [ 10, 0, 4, 1, 0, 0, 0, 0;
                        14.5, -1, 5, 1, 0, 0, 0, 0;
                        19, 0, 4, 1, 0, 0, 0, 0
-                       ]; 
+                     ]; 
 
 Number_Of_Obstacles = length( Array_Of_Obstacles(:,1) );    
 
-
-SafetyMarginInTime = 2; %[s]
+SafetyMarginInTime = 2; %[sec]
 TangentQuadrant = 1; 
 % -------------------------------------------------------------------------
 
@@ -127,36 +126,38 @@ NumberOfOutputs = size(C_PP, 1); % q = number of lines of the matrix Cd
 
 % Determine Constraints for MIQP
 OutputConstraints = [-inf inf;  % for position_X output
-                     -inf inf]; % for position_Y output 
+                     -1 1;      % for velocity_X output
+                     -inf inf;  % for position_Y output 
+                     -1 1];     % for velocity_Y output
 
-ControlIncrementConstraints = 1*[-0.1 0.1; % delta_vx_min and delta_vx_max
-                                 -0.1 0.1];% delta_vy_min and delta_vy_max                 
+ControlIncrementConstraints = 0.1*[-0.5 0.5; % delta_vx_min and delta_vx_max
+                               -0.5 0.5];% delta_vy_min and delta_vy_max                 
 
-ControlConstraints = [ -1.0 1.0;
-                       -1.0 1.0]; % constraints on U.                         
+ControlConstraints = 0.2*[-1.0 1.0;
+                          -1.0 1.0]; % constraints on U.                         
 
 NumberOfDecisions = 4 * Number_Of_Obstacles; % number of binary constraints.
 
 % Define MIQP Parametes (before integer constraints)
 % Weight Term terms for Traking (Q_PP) and Control Effort (R_PP)
-Horizon_Vector_PP = [10 2];
+Horizon_Vector_PP = [40 5];
 Prediction_Horizon_PP = Horizon_Vector_PP(1);
 Control_Horizon_PP = Horizon_Vector_PP(2);
-Q_PP = 1*diag([1; 1]);
-R_PP = 0*diag([1e2; 1e2]);
+Q_PP = 1e4*diag([1; 1]);
+R_PP = 1e-1*diag([1; 1]);
 % -------------------------------------------------------------------------
 
 %% Configuration for Model Predictive Control
 
-Horizon_Vector = [40 10];
+Horizon_Vector = [20 5];
 Prediction_Horizon = Horizon_Vector(1);
 Control_Horizon = Horizon_Vector(2);
 
-Surge_Weight_Outer_Park = 10;              
-Yaw_Weight_Outer_Park = 100;              
+Surge_Weight_Outer_Park = 1*1e2;              
+Yaw_Weight_Outer_Park = 5*1e1;              
 
-Surge_Weight_Inner_Park = 10;            
-Yaw_Weight_Inner_Park = 100;  
+Surge_Weight_Inner_Park = 1*1e2;            
+Yaw_Weight_Inner_Park = 5*1e1;  
 
 Num_Of_Output = 2;
 Num_Of_Input = 2;
@@ -183,7 +184,7 @@ for i = 1:1:Num_Of_Output*Prediction_Horizon
     end
 end
 
-Input_Weight = 0.01;
+Input_Weight = 1e-4;
 R = Input_Weight*eye(Control_Horizon*Num_Of_Input); 
 
 % Maximum and Minimum Applied Torques
@@ -191,19 +192,16 @@ U_Max =  40;
 U_Min = -40;
 
 % Determine Constraints for MIQP
-OutputConstraints_MPC = [-1 1     % for surge speed
+OutputConstraints_MPC = [-2 2     % for surge speed
                          -pi pi]; % for yaw angle
 
-ControlIncrementConstraints_MPC = [ U_Min*2 U_Max*2; % delta_LThrust_min and delta_LThrust_max
-                                    U_Min*2 U_Max*2];% delta_RThrust_min and delta_RThrust_max                 
+ControlIncrementConstraints_MPC = [U_Min*2 U_Max*2; % delta_LThrust_min and delta_LThrust_max
+                                   U_Min*2 U_Max*2];% delta_RThrust_min and delta_RThrust_max                 
 
-ControlConstraints_MPC = [ U_Min U_Max;
-                           U_Min U_Max]; % constraints on Thrusters.                      
-
-
+ControlConstraints_MPC = [U_Min U_Max;
+                          U_Min U_Max]; % constraints on Thrusters.                      
+                      
 Future_Predicted_Output = zeros(2*Prediction_Horizon,1);
-
-
 %% Initialize Log Arrays
 % -------------------------------------------------------------------------
 StatesLog = [];
@@ -230,21 +228,19 @@ Total_Energy_Consumption = [];
 filtered_yaw_previous = InitStates(3);
 % yaw_filter_coefficient = FILTER_CONSTANT_YAW / ...
 %                                 ( FILTER_CONSTANT_YAW + Ts_PP)
-yaw_filter_coefficient = 0.7;
+yaw_filter_coefficient = 0.2;
 
 % Surge Speed -------------------------------------------------------------
 % FILTER_CONSTANT_SURGE = 0.05;
 filtered_surge_previous = InitStates(4);
 % surge_filter_coefficient = FILTER_CONSTANT_SURGE / ...
 %                                 ( FILTER_CONSTANT_SURGE + Ts_PP)
-surge_filter_coefficient = 0.5;
+surge_filter_coefficient = 0.25;
 
 %% Start MIQP for Path Generation and Model Predictive Algorithm
 
 States_PP = InitialStates_PP;
-ControlInput_PP = [ cos( CurrentStates(3) ) -sin( CurrentStates(3) );
-                   sin( CurrentStates(3) ) cos( CurrentStates(3) ) ] * ...
-                  [ CurrentStates(4); CurrentStates(5) ];
+ControlInput_PP = [0; 0];
 DecisionInput_PP = ones( 4 * Number_Of_Obstacles, 1 );
 Output_PP = C_PP*InitialStates_PP;
 
@@ -268,11 +264,10 @@ Dist_Forces = [Dist_Forces; SimTime Dist_F];
 %% Mixed-Integer Programming - YALMIP Configuration 
 
 %ops = sdpsettings('solver', 'mosek', 'verbose', 0, 'debug', 0);
-%
 ops = sdpsettings('solver', 'cplex', 'verbose', 0, 'debug', 0);
 %ops = sdpsettings('solver', 'gurobi', 'verbose', 0, 'debug', 0);
 
-x_y_final = [17; 0.5];
+x_y_final = [19.5; 1.0];
 CoA = 0.25; % Cicle of acceptance to finalize the motion
 
 finished = false;
@@ -280,36 +275,43 @@ while ( ~finished && SimTime < SimTimeLimit )
 %while ( ~finished )    
     
     SimTime
-
+    
+    vehicle_velocity = sqrt(States_PP(2)^2 + States_PP(4)^2);
+    angle_PP = atan2((x_y_final(2) - States_PP(3)), ...
+                    (x_y_final(1) - States_PP(1)));
+    distance_between_references = vehicle_velocity * Ts_PP;
+   
+    distance_between_references_x = distance_between_references * cos(angle_PP);
+    distance_between_references_y = distance_between_references * sin(angle_PP);
+    
     for k = 1:Prediction_Horizon_PP
         
-%         ReferenceOutput_PP(k,1) = States_PP(1) + Ts_PP * k;
-        
-        ReferenceOutput_PP(k,1) = x_y_final(1); %States_PP(1) + Ts_PP * k;
-%         ReferenceOutput_PP(k,2) =  x_y_final(2); %States_PP(1) + Ts_PP * k; 
+         ReferenceOutput_PP(k,1) = States_PP(1) + k * distance_between_references_x;
+         ReferenceOutput_PP(k,2) = States_PP(3) + k * distance_between_references_y;
         
     end
 %% Solution of Mixed Integer Quadratic Programming For Path Planning
 % -------------------------------------------------------------------------
 
-    [PredictedState_x_y, DecisionInput_PP, States_PP, ControlInput_PP] = ...
+    [PredictedState, DecisionInput_PP, States_PP, ControlInput_PP] = ...
                             Solve_MIQP(NumberOfControls,...
                             Control_Horizon_PP, Prediction_Horizon_PP, ...
                             Q_PP, R_PP, States_PP, ControlInput_PP, ...
-                            A_PP, B_PP, ReferenceOutput_PP, ...
+                            A_PP, B_PP, C_PP, ReferenceOutput_PP, ...
                             NumberOfDecisions, Number_Of_Obstacles, ...
                             SafetyMarginInTime,ControlIncrementConstraints,...
                             ControlConstraints, OutputConstraints, ...
                             Array_Of_Obstacles, ops);
 % -------------------------------------------------------------------------
                         
-    delta_y = PredictedState_x_y(2) - CurrentStates(2);
-    delta_x = PredictedState_x_y(1) - CurrentStates(1);
+    delta_y = PredictedState(3) - CurrentStates(2);
+    delta_x = PredictedState(1) - CurrentStates(1);
     
     Yaw_PP =  atan2( delta_y, delta_x );
 
     Surge_Sway_PP = [cos( Yaw_PP ) sin( Yaw_PP ); ...
-                    -sin( Yaw_PP ) cos( Yaw_PP )] * ControlInput_PP;
+                     -sin( Yaw_PP ) cos( Yaw_PP )] * ...
+                     [PredictedState(2); PredictedState(4)];
     
     % Determine Quadrant for Atan2 Function
     % ---------------------------------------------------------------------               
@@ -329,7 +331,7 @@ while ( ~finished && SimTime < SimTimeLimit )
     
     % Write Logs for States_PP, Control_Input_PP and DecisionInput_PP
     % ---------------------------------------------------------------------
-    StatesLog_PP = [StatesLog_PP; SimTime States_PP' ...
+    StatesLog_PP = [StatesLog_PP; SimTime PredictedState' ...
                     ControlInput_PP' DecisionInput_PP' TangentQuadrant];
     %----------------------------------------------------------------------
                 
@@ -343,7 +345,6 @@ while ( ~finished && SimTime < SimTimeLimit )
     
     filtered_yaw_previous = filtered_yaw;                                   
     filtered_surge_previous = filtered_surge;
-    
     
     for k = 1:Prediction_Horizon
         
@@ -366,7 +367,7 @@ while ( ~finished && SimTime < SimTimeLimit )
     
     LThrusterForceX = LThrusterForceX +  ControlIncrement_MPC(1);
     RThrusterForceX = RThrusterForceX +  ControlIncrement_MPC(2);
-    
+%     
     %LThrusterForceX
     %RThrusterForceX
 % -------------------------------------------------------------------------    
@@ -383,20 +384,20 @@ while ( ~finished && SimTime < SimTimeLimit )
     
     PrevStates = CurrentStates;
     CurrentStates = States_MPC ;
+%     CurrentStates = [States_PP(1); States_PP(3); 0; Surge_Sway_PP(1); Surge_Sway_PP(2); 0];
+    States_PP = [CurrentStates(1); States_PP(2); CurrentStates(2); States_PP(4)];
     
     if( norm(x_y_final - [CurrentStates(1); CurrentStates(2)]) < CoA )
         finished = true;
     end
     
-    if( CurrentStates(1) >= 18 )
+    if( CurrentStates(1) >= 20 )
         finished = true;
     end
     
-    States_PP = [CurrentStates(1) CurrentStates(2)]';
-    ControlInput_PP = [StatesInE(4) StatesInE(5)]';
-    
     SimTime = SimTime + TsPlant;
-    
+%     SimTime = SimTime + Ts_PP;
+
     % Write Logs
     % --------------------------------------------------------------------
     LThrusterForceXLog = [LThrusterForceXLog; SimTime LThrusterForceX];
@@ -413,6 +414,6 @@ dummylabel=strcat('MIQP_and_MPC','.mat');
               
 save(dummylabel, 'StatesLog','Desired_Outputs','Tot_Forces', 'Dist_Forces',...
      'LThrusterForceXLog','RThrusterForceXLog', 'StatesLog_PP', ...
-     'Array_Of_Obstacles', 'Number_Of_Obstacles');  
+     'Array_Of_Obstacles','Number_Of_Obstacles');  
 
 Plotter

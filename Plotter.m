@@ -146,7 +146,7 @@ ylim([-3 5])
 
 figure
 plot(StatesLog_PP(1:NumberOfSamples_PP,2), ...
-     StatesLog_PP(1:NumberOfSamples_PP,3), 'LineWidth', 2, 'Color', 'b');
+     StatesLog_PP(1:NumberOfSamples_PP,4), 'LineWidth', 2, 'Color', 'b');
 
 %%Plot Parking Spot
 % hold on
@@ -209,7 +209,7 @@ ylabel('v_y velocity in Body Frame(m/s)')
 figure
 subplot(2,1,1)
 stairs(StatesLog_PP(1:NumberOfSamples_PP,1),...
-       StatesLog_PP(1:NumberOfSamples_PP,4),'LineWidth',2);
+       StatesLog_PP(1:NumberOfSamples_PP,3),'LineWidth',2);
 legend('v_x in NED vs Time')
 xlabel('Time(s)')
 ylabel('v_x velocity in NED Frame(m/s)')
@@ -258,7 +258,7 @@ legend('Right thruster force(N)')
 
 figure
 stairs(StatesLog_PP(1:NumberOfSamples_PP,1),...
-       StatesLog_PP(1:NumberOfSamples_PP,Number_Of_Obstacles*4+6),'LineWidth',2);
+       StatesLog_PP(1:NumberOfSamples_PP,Number_Of_Obstacles*4+8),'LineWidth',2);
 legend('Quadrant vs Time')
 xlabel('Time(s)')
 ylabel('Quadrant')
